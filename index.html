@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#090d16" />
+  <title>SF 우주 제국 GM</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">SF EMPIRE · v3.2</div>
+        <h1>우주 제국 GM</h1>
+      </div>
+      <button id="newGame" class="ghost" type="button">새 게임</button>
+    </header>
+
+    <main id="log" class="log" aria-live="polite">
+      <section class="hero" id="hero">
+        <div class="planet"></div>
+        <h2>9개의 문명, 하나의 은하</h2>
+        <p>원본 v3.2 규칙을 기반으로 GPT가 게임 마스터를 맡습니다. 진행 내용은 이 기기에 자동 저장됩니다.</p>
+        <button id="startGame" class="primary" type="button">게임 시작</button>
+      </section>
+    </main>
+
+    <div id="thinking" class="thinking hidden"><span></span><span></span><span></span> GM이 판정 중…</div>
+
+    <form id="composer" class="composer hidden">
+      <textarea id="message" rows="1" maxlength="6000" placeholder="자유 행동을 입력하세요…"></textarea>
+      <button id="send" class="send" type="submit" aria-label="전송">↑</button>
+    </form>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
