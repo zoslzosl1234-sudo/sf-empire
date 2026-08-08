@@ -9,20 +9,18 @@ const thinking = document.querySelector('#thinking');
 
 const STORAGE_KEY = 'sf-empire-v32-history';
 const BACKUP_KEY = 'sf-empire-v32-backup';
-const SAVE_VERSION = 2;
+const MEMORY_KEY = 'sf-empire-v32-memory';
 
-/*
-  스마트폰 localStorage에 보관할 최대 대화 수.
-  API로는 전부 보내지 않고 최근 대화 일부만 보낸다.
-*/
+const SAVE_VERSION = 3;
 const MAX_LOCAL_MESSAGES = 300;
-const MAX_API_MESSAGES = 30;
+const MAX_API_MESSAGES = 12;
 
 let history = loadHistory();
+let memory = loadMemory();
 let busy = false;
 
 /* =========================
-   저장 / 복구
+   기본 검증
 ========================= */
 
 function validMessage(m) {
@@ -33,6 +31,10 @@ function validMessage(m) {
   );
 }
 
+/* =========================
+   대화 저장 / 복구
+========================= */
+
 function loadHistory() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -41,16 +43,14 @@ function loadHistory() {
 
     const parsed = JSON.parse(raw);
 
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
 
     return parsed.filter(validMessage);
   } catch (err) {
     console.error('세이브 불러오기 실패:', err);
 
-    /*
-      기본 세이브가 깨졌을 경우
-      직전 백업본 복구 시도
-    */
     try {
       const backup = localStorage.getItem(BACKUP_KEY);
 
@@ -58,7 +58,9 @@ function loadHistory() {
 
       const parsed = JSON.parse(backup);
 
-      if (!Array.isArray(parsed)) return [];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
 
       return parsed.filter(validMessage);
     } catch {
@@ -69,19 +71,12 @@ function loadHistory() {
 
 function saveHistory() {
   try {
-    /*
-      새 저장 전에 기존 저장본을 백업
-    */
     const oldSave = localStorage.getItem(STORAGE_KEY);
 
     if (oldSave) {
       localStorage.setItem(BACKUP_KEY, oldSave);
     }
 
-    /*
-      너무 커져 브라우저 저장공간을 넘지 않도록
-      최근 300개 메시지까지 보존
-    */
     if (history.length > MAX_LOCAL_MESSAGES) {
       history = history.slice(-MAX_LOCAL_MESSAGES);
     }
@@ -95,14 +90,58 @@ function saveHistory() {
   }
 }
 
-/*
-  앱을 닫거나 다른 앱으로 이동할 때도 저장
-*/
-window.addEventListener('pagehide', saveHistory);
+/* =========================
+   장기 기억 저장 / 복구
+========================= */
+
+function loadMemory() {
+  try {
+    const raw = localStorage.getItem(MEMORY_KEY);
+
+    if (!raw) return {};
+
+    const parsed = JSON.parse(raw);
+
+    if (
+      !parsed ||
+      typeof parsed !== 'object' ||
+      Array.isArray(parsed)
+    ) {
+      return {};
+    }
+
+    return parsed;
+  } catch (err) {
+    console.error('장기 기억 불러오기 실패:', err);
+    return {};
+  }
+}
+
+function saveMemory() {
+  try {
+    localStorage.setItem(
+      MEMORY_KEY,
+      JSON.stringify(memory)
+    );
+  } catch (err) {
+    console.error('장기 기억 저장 실패:', err);
+  }
+}
+
+function saveAll() {
+  saveHistory();
+  saveMemory();
+}
+
+/* =========================
+   앱 종료 / 백그라운드 저장
+========================= */
+
+window.addEventListener('pagehide', saveAll);
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    saveHistory();
+    saveAll();
   }
 });
 
@@ -141,11 +180,9 @@ function renderMarkdownLite(text) {
 
 function addMessage(role, content, persist = true) {
   const wrap = document.createElement('section');
-
   wrap.className = `msg ${role}`;
 
   const bubble = document.createElement('div');
-
   bubble.className = 'bubble';
 
   bubble.innerHTML =
@@ -215,7 +252,6 @@ async function send(message) {
   }
 
   busy = true;
-
   sendBtn.disabled = true;
 
   if (startBtn) {
@@ -224,10 +260,8 @@ async function send(message) {
 
   thinking.classList.remove('hidden');
 
-  /*
-    서버에는 최근 30개 메시지만 전달.
-    스마트폰에는 최대 300개까지 저장.
-  */
+  const cleanMessage = message.trim();
+
   const prior = history.slice(
     -MAX_API_MESSAGES
   );
@@ -236,11 +270,10 @@ async function send(message) {
 
   addMessage(
     'user',
-    message.trim()
+    cleanMessage
   );
 
   input.value = '';
-
   autoGrow();
 
   try {
@@ -252,8 +285,9 @@ async function send(message) {
       },
 
       body: JSON.stringify({
-        message: message.trim(),
-        history: prior
+        message: cleanMessage,
+        history: prior,
+        memory
       })
     });
 
@@ -266,28 +300,35 @@ async function send(message) {
       );
     }
 
+    if (
+      data.memory &&
+      typeof data.memory === 'object' &&
+      !Array.isArray(data.memory)
+    ) {
+      memory = data.memory;
+      saveMemory();
+    }
+
     addMessage(
       'assistant',
       data.text
     );
+
   } catch (e) {
     addMessage(
       'assistant',
-      `⚠️ 연결 오류: ${e.message}\n\n게임 기록은 스마트폰에 저장되어 있습니다. 잠시 후 같은 행동을 다시 보내세요.`
+      `⚠️ 연결 오류: ${e.message}\n\n게임 기록과 장기 기억은 스마트폰에 저장되어 있습니다. 잠시 후 같은 행동을 다시 보내세요.`
     );
   } finally {
     busy = false;
-
     sendBtn.disabled = false;
-
     thinking.classList.add('hidden');
-
     input.focus();
   }
 }
 
 /* =========================
-   텍스트 입력창
+   입력창 자동 높이
 ========================= */
 
 function autoGrow() {
@@ -305,13 +346,14 @@ function autoGrow() {
 ========================= */
 
 function exportSave() {
-  saveHistory();
+  saveAll();
 
   const saveData = {
     game: 'SF Empire v3.2',
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
-    history
+    history,
+    memory
   };
 
   const blob = new Blob(
@@ -344,9 +386,7 @@ function exportSave() {
     `sf-empire-save-${date}.json`;
 
   document.body.appendChild(a);
-
   a.click();
-
   a.remove();
 
   setTimeout(() => {
@@ -367,13 +407,13 @@ function importSave(file) {
       const data =
         JSON.parse(reader.result);
 
-      const imported =
+      const importedHistory =
         Array.isArray(data)
           ? data
           : data?.history;
 
       if (
-        !Array.isArray(imported)
+        !Array.isArray(importedHistory)
       ) {
         throw new Error(
           '올바른 SF Empire 세이브 파일이 아닙니다.'
@@ -381,7 +421,7 @@ function importSave(file) {
       }
 
       const cleaned =
-        imported.filter(validMessage);
+        importedHistory.filter(validMessage);
 
       if (!cleaned.length) {
         throw new Error(
@@ -401,9 +441,20 @@ function importSave(file) {
         -MAX_LOCAL_MESSAGES
       );
 
-      saveHistory();
+      if (
+        data?.memory &&
+        typeof data.memory === 'object' &&
+        !Array.isArray(data.memory)
+      ) {
+        memory = data.memory;
+      } else {
+        memory = {};
+      }
+
+      saveAll();
 
       location.reload();
+
     } catch (err) {
       alert(
         `세이브 불러오기 실패\n\n${err.message}`
@@ -415,7 +466,7 @@ function importSave(file) {
 }
 
 /* =========================
-   저장 / 불러오기 버튼 생성
+   저장 / 불러오기 버튼
 ========================= */
 
 function createSaveButtons() {
@@ -426,21 +477,21 @@ function createSaveButtons() {
 
   if (!container) return;
 
+  if (
+    document.querySelector('#saveGame') ||
+    document.querySelector('#loadGame')
+  ) {
+    return;
+  }
+
   const saveBtn =
     document.createElement('button');
 
+  saveBtn.id = 'saveGame';
   saveBtn.type = 'button';
-
   saveBtn.textContent = '저장';
-
-  saveBtn.title =
-    '세이브 파일 다운로드';
-
-  /*
-    기존 새 게임 버튼의 스타일을 최대한 재사용
-  */
-  saveBtn.className =
-    newBtn.className;
+  saveBtn.title = '세이브 파일 다운로드';
+  saveBtn.className = newBtn.className;
 
   saveBtn.addEventListener(
     'click',
@@ -450,15 +501,11 @@ function createSaveButtons() {
   const loadBtn =
     document.createElement('button');
 
+  loadBtn.id = 'loadGame';
   loadBtn.type = 'button';
-
   loadBtn.textContent = '불러오기';
-
-  loadBtn.title =
-    '세이브 파일 불러오기';
-
-  loadBtn.className =
-    newBtn.className;
+  loadBtn.title = '세이브 파일 불러오기';
+  loadBtn.className = newBtn.className;
 
   const fileInput =
     document.createElement('input');
@@ -508,6 +555,29 @@ function createSaveButtons() {
 }
 
 /* =========================
+   새 게임
+========================= */
+
+function resetGame() {
+  localStorage.removeItem(
+    STORAGE_KEY
+  );
+
+  localStorage.removeItem(
+    BACKUP_KEY
+  );
+
+  localStorage.removeItem(
+    MEMORY_KEY
+  );
+
+  history = [];
+  memory = {};
+
+  location.reload();
+}
+
+/* =========================
    이벤트
 ========================= */
 
@@ -524,7 +594,6 @@ composer.addEventListener(
   'submit',
   e => {
     e.preventDefault();
-
     send(input.value);
   }
 );
@@ -542,7 +611,6 @@ input.addEventListener(
       !e.shiftKey
     ) {
       e.preventDefault();
-
       composer.requestSubmit();
     }
   }
@@ -553,21 +621,13 @@ newBtn.addEventListener(
   () => {
     if (
       !confirm(
-        '현재 진행 기록을 지우고 새 게임을 시작할까요?\n\n필요하면 먼저 저장 버튼으로 세이브 파일을 받아두세요.'
+        '현재 진행 기록과 장기 기억을 모두 지우고 새 게임을 시작할까요?\n\n필요하면 먼저 저장 버튼으로 세이브 파일을 받아두세요.'
       )
     ) {
       return;
     }
 
-    localStorage.removeItem(
-      STORAGE_KEY
-    );
-
-    localStorage.removeItem(
-      BACKUP_KEY
-    );
-
-    location.reload();
+    resetGame();
   }
 );
 
@@ -576,5 +636,4 @@ newBtn.addEventListener(
 ========================= */
 
 createSaveButtons();
-
 restore();
