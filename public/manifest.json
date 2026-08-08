@@ -1,0 +1,12 @@
+{
+  "name": "SF 우주 제국 시뮬레이션",
+  "short_name": "SF Empire",
+  "description": "AI GM과 플레이하는 SF 우주 제국 시뮬레이션",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080b14",
+  "theme_color": "#080b14",
+  "lang": "ko-KR"
+}
