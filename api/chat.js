@@ -1,6 +1,4 @@
-from pathlib import Path
-
-code = """import fs from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 
 const rules = fs.readFileSync(
@@ -27,6 +25,7 @@ const EXTRA_INSTRUCTIONS = `
 
 [매우 중요한 출력 길이 규칙]
 이 게임은 스마트폰에서 플레이한다.
+
 원본 규칙의 계산과 상태 관리는 내부적으로 모두 적용하되,
 화면에 보여주는 답변은 반드시 간결하게 요약한다.
 
@@ -34,37 +33,69 @@ const EXTRA_INSTRUCTIONS = `
 - 전체 분량을 대략 600~1200자 안쪽으로 유지한다.
 - 특별한 전쟁/대형 사건이 아니라면 1500자를 넘기지 않는다.
 - 같은 설명을 반복하지 않는다.
-- 배경설명은 필요한 만큼만 2~5문장으로 요약한다.
+- 배경 설명은 필요한 만큼만 2~5문장으로 요약한다.
 - 계산식은 결과 이해에 꼭 필요한 경우에만 한두 줄 표시한다.
-- 자원/수치가 변했다면 "변화한 값" 위주로 보여준다.
+- 자원이나 수치가 변했다면 "변화한 값" 위주로 보여준다.
 - 변하지 않은 모든 세부 수치를 매번 다시 나열하지 않는다.
-- 플레이어가 "자세히", "전체 상태", "계산 과정", "보고서" 등을 요구할 때만 상세 출력한다.
+- 플레이어가 "자세히", "전체 상태", "계산 과정", "보고서" 등을
+  요구할 때만 상세 출력한다.
 
 [권장 화면 형식]
-1. 현재 상황: 2~5문장
-2. 핵심 변화: 최대 5줄
-3. 다음 행동: 선택지 5개, 각 1줄
-4. 실제 턴이 종료된 경우에만 간략 상태:
-   - 날짜 / 턴
-   - 경제력 / 안정도
-   - 핵심 자원 몇 개
-   - 현재 연구
-   - 핵심 함대
-   - 중요한 외교/사건
+
+### 현재 상황
+2~5문장 이내.
+
+### 핵심 변화
+최대 5줄.
+
+### 다음 행동
+선택지 5개.
+각 선택지는 1줄 정도로 짧게 작성한다.
+
+실제로 턴이 종료된 경우에만 마지막에 간략 상태를 표시한다.
+
+상태에는 필요한 경우 다음만 표시한다.
+- 날짜 / 턴
+- 경제력 / 안정도
+- 중요한 자원
+- 현재 연구
+- 핵심 함대
+- 중요한 외교 또는 사건
+
 상태창은 최대 8~10줄 정도로 요약한다.
 
-국가 생성 단계에서는 더 짧게 답한다.
-한 단계 설명 + 선택지만 보여주고,
-다음 단계 정보는 미리 길게 설명하지 않는다.
+[국가 생성 단계]
+
+국가 생성 중에는 일반 턴보다 훨씬 짧게 답한다.
+
+현재 단계 하나만 설명하고 선택지를 보여준다.
+
+예:
+종족 선택 단계라면 종족 선택만 보여준다.
+
+아직 선택하지 않은
+국가명, 정치체계, 시작 행성, 특성 등의 다음 단계 내용을
+미리 길게 설명하지 않는다.
+
+[중요]
+
+원본 rules.txt에 긴 상태창이나 상세 출력 규칙이 있더라도
+게임 계산에는 적용하되 매 턴 화면에 전부 출력할 필요는 없다.
+
+플레이어가 직접 상세 정보를 요청하지 않는 한
+모바일용 요약 화면을 우선한다.
 
 [장기 기억]
+
 입력에 "현재 장기 게임 기억"이 제공되면
 그 정보는 현재 세이브 상태이며 최근 대화보다 우선한다.
 
 기존 기억은 실제 사건으로 바뀌지 않았다면 유지한다.
-모르는 값을 억지로 만들지 않는다.
+
+모르는 값은 억지로 만들지 않는다.
 
 [출력 형식]
+
 플레이어에게 보여줄 게임 본문을 먼저 출력한다.
 
 맨 마지막에 반드시 아래 형식을 붙인다.
@@ -83,17 +114,19 @@ const EXTRA_INSTRUCTIONS = `
 `;
 
 function cleanHistory(history) {
-  if (!Array.isArray(history)) return [];
+  if (!Array.isArray(history)) {
+    return [];
+  }
 
   return history
     .filter(
-      m =>
+      (m) =>
         m &&
         (m.role === "user" || m.role === "assistant") &&
         typeof m.content === "string"
     )
     .slice(-10)
-    .map(m => ({
+    .map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [
         {
@@ -133,16 +166,21 @@ function extractGeminiText(data) {
     data?.candidates?.[0]?.content?.parts || [];
 
   return parts
-    .map(part =>
-      typeof part?.text === "string"
-        ? part.text
-        : ""
-    )
+    .map((part) => {
+      if (typeof part?.text === "string") {
+        return part.text;
+      }
+
+      return "";
+    })
     .join("")
     .trim();
 }
 
-function extractGameAndMemory(rawText, previousMemory) {
+function extractGameAndMemory(
+  rawText,
+  previousMemory
+) {
   if (!rawText) {
     return {
       text: "",
@@ -153,7 +191,8 @@ function extractGameAndMemory(rawText, previousMemory) {
   const startMarker = "<<<MEMORY>>>";
   const endMarker = "<<<END_MEMORY>>>";
 
-  const start = rawText.indexOf(startMarker);
+  const start =
+    rawText.indexOf(startMarker);
 
   if (start === -1) {
     return {
@@ -162,25 +201,35 @@ function extractGameAndMemory(rawText, previousMemory) {
     };
   }
 
-  const gameText = rawText.slice(0, start).trim();
-  const memoryStart = start + startMarker.length;
-  const end = rawText.indexOf(endMarker, memoryStart);
+  const gameText =
+    rawText.slice(0, start).trim();
+
+  const memoryStart =
+    start + startMarker.length;
+
+  const end =
+    rawText.indexOf(
+      endMarker,
+      memoryStart
+    );
 
   const memoryText = (
     end === -1
       ? rawText.slice(memoryStart)
       : rawText.slice(memoryStart, end)
   )
-    .replace(/^```json\\s*/i, "")
-    .replace(/^```\\s*/i, "")
-    .replace(/\\s*```$/i, "")
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
     .trim();
 
-  let parsedMemory = previousMemory;
+  let parsedMemory =
+    previousMemory;
 
   if (memoryText) {
     try {
-      const candidate = JSON.parse(memoryText);
+      const candidate =
+        JSON.parse(memoryText);
 
       if (
         candidate &&
@@ -201,57 +250,83 @@ function extractGameAndMemory(rawText, previousMemory) {
     text:
       gameText ||
       "게임 진행 결과를 생성했습니다.",
+
     memory: parsedMemory
   };
 }
 
-function getRetryAfterSeconds(data, response) {
+function getRetryAfterSeconds(
+  data,
+  response
+) {
   const headerValue =
     response.headers.get("retry-after");
 
   if (headerValue) {
-    const n = Number(headerValue);
+    const n =
+      Number(headerValue);
 
-    if (Number.isFinite(n) && n > 0) {
+    if (
+      Number.isFinite(n) &&
+      n > 0
+    ) {
       return Math.ceil(n);
     }
   }
 
-  const details = data?.error?.details;
+  const details =
+    data?.error?.details;
 
   if (Array.isArray(details)) {
     for (const detail of details) {
-      const delay = detail?.retryDelay;
+      const delay =
+        detail?.retryDelay;
 
-      if (typeof delay === "string") {
-        const match = delay.match(/([\\d.]+)s/);
+      if (
+        typeof delay === "string"
+      ) {
+        const match =
+          delay.match(/([\d.]+)s/);
 
         if (match) {
-          return Math.ceil(Number(match[1]));
+          return Math.ceil(
+            Number(match[1])
+          );
         }
       }
     }
   }
 
-  const message = data?.error?.message || "";
+  const message =
+    data?.error?.message || "";
+
   const match =
-    message.match(/retry\\s+in\\s+([\\d.]+)\\s*s/i);
+    message.match(
+      /retry\s+in\s+([\d.]+)\s*s/i
+    );
 
   if (match) {
-    return Math.ceil(Number(match[1]));
+    return Math.ceil(
+      Number(match[1])
+    );
   }
 
   return 30;
 }
 
-export default async function handler(req, res) {
+export default async function handler(
+  req,
+  res
+) {
   if (req.method !== "POST") {
     return res.status(405).json({
-      error: "POST 요청만 사용할 수 있습니다."
+      error:
+        "POST 요청만 사용할 수 있습니다."
     });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey =
+    process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
     return res.status(500).json({
@@ -268,26 +343,37 @@ export default async function handler(req, res) {
 
     if (!message) {
       return res.status(400).json({
-        error: "메시지가 비어 있습니다."
+        error:
+          "메시지가 비어 있습니다."
       });
     }
 
     const history =
-      cleanHistory(req.body?.history);
+      cleanHistory(
+        req.body?.history
+      );
 
     const memory =
-      cleanMemory(req.body?.memory);
+      cleanMemory(
+        req.body?.memory
+      );
 
     const contents = [
       ...history,
+
       {
         role: "user",
+
         parts: [
           {
             text:
-              `===== 현재 장기 게임 기억 =====\\n` +
-              `${JSON.stringify(memory, null, 2)}\\n\\n` +
-              `===== 현재 플레이어 입력 =====\\n` +
+              `===== 현재 장기 게임 기억 =====\n` +
+              `${JSON.stringify(
+                memory,
+                null,
+                2
+              )}\n\n` +
+              `===== 현재 플레이어 입력 =====\n` +
               message
           }
         ]
@@ -302,8 +388,8 @@ export default async function handler(req, res) {
         parts: [
           {
             text:
-              `${EXTRA_INSTRUCTIONS}\\n\\n` +
-              `===== 원본 게임 규칙 =====\\n` +
+              `${EXTRA_INSTRUCTIONS}\n\n` +
+              `===== 원본 게임 규칙 =====\n` +
               rules
           }
         ]
@@ -317,25 +403,46 @@ export default async function handler(req, res) {
       }
     };
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify(requestBody)
-    });
+    const response =
+      await fetch(
+        url,
+        {
+          method: "POST",
 
-    const data = await response.json();
+          headers: {
+            "Content-Type":
+              "application/json",
 
-    if (response.status === 429) {
+            "x-goog-api-key":
+              apiKey
+          },
+
+          body:
+            JSON.stringify(
+              requestBody
+            )
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      response.status === 429
+    ) {
       const retryAfter =
-        getRetryAfterSeconds(data, response);
+        getRetryAfterSeconds(
+          data,
+          response
+        );
 
       return res.status(429).json({
         error:
           "Gemini 무료 API 사용량이 잠시 가득 찼습니다.",
-        code: "RATE_LIMIT",
+
+        code:
+          "RATE_LIMIT",
+
         retryAfter
       });
     }
@@ -346,11 +453,13 @@ export default async function handler(req, res) {
         JSON.stringify(data)
       );
 
-      return res.status(response.status).json({
-        error:
-          data?.error?.message ||
-          `Gemini API 오류 (${response.status})`
-      });
+      return res
+        .status(response.status)
+        .json({
+          error:
+            data?.error?.message ||
+            `Gemini API 오류 (${response.status})`
+        });
     }
 
     const rawText =
@@ -370,12 +479,21 @@ export default async function handler(req, res) {
       );
 
     return res.status(200).json({
-      text: parsed.text,
-      memory: parsed.memory,
-      model: MODEL
+      text:
+        parsed.text,
+
+      memory:
+        parsed.memory,
+
+      model:
+        MODEL
     });
+
   } catch (err) {
-    console.error("Server Error:", err);
+    console.error(
+      "Server Error:",
+      err
+    );
 
     return res.status(500).json({
       error:
@@ -384,8 +502,3 @@ export default async function handler(req, res) {
     });
   }
 }
-"""
-
-path = Path("/mnt/data/chat.js")
-path.write_text(code, encoding="utf-8")
-print(f"Created {path}")
